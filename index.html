@@ -212,6 +212,10 @@
   #dirStatus{font-size:13px;color:var(--text-dim)}
   #dirStatus.ok{color:#7fe0a0}
   #dirStatus b{color:var(--gold-soft)}
+  .settings .hint{grid-column:1/-1;font-size:12px;line-height:1.5;color:var(--text-dim);
+    margin-top:-2px}
+  .settings .hint code{background:rgba(0,0,0,.3);padding:1px 6px;border-radius:5px;
+    color:var(--gold-soft);font-size:12px}
 
   /* ---- modal ---- */
   .modal-backdrop{position:fixed;inset:0;background:rgba(8,4,18,.72);
@@ -253,6 +257,9 @@
         <button id="pickDir">📁 Scegli cartella…</button>
         <span id="dirStatus">Nessuna cartella: i biglietti andranno nei Download</span>
       </div>
+      <small class="hint">Usa una cartella <b>dedicata</b> (es. <code>C:\Biglietti-Traumara</code>).
+        Non sono ammesse Download, Desktop, Documenti o cartelle di sistema (“contiene file di sistema”).
+        Suggerimento: crea prima la cartella in Esplora File, poi selezionala qui.</small>
     </div>
   </section>
 
