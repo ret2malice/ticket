@@ -26,6 +26,16 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
+  .cobweb{position:fixed;width:min(34vw,300px);height:min(34vw,300px);
+    opacity:.16;pointer-events:none;z-index:0}
+  .cobweb path,.cobweb line{stroke:#f4c95d;fill:none;stroke-width:1;vector-effect:non-scaling-stroke}
+  .cobweb.tl{top:0;left:0}
+  .cobweb.tr{top:0;right:0;transform:scaleX(-1)}
+  .cobweb.br{bottom:0;right:0;transform:rotate(180deg)}
+  .cobweb-spider{position:fixed;top:0;right:14vw;width:34px;opacity:.5;z-index:0;pointer-events:none}
+  .cobweb-spider line,.cobweb-spider path{stroke:#ffe49b;fill:none;stroke-width:1.4;stroke-linecap:round}
+  .cobweb-spider ellipse{fill:#1d1130;stroke:#ffe49b;stroke-width:1.2}
+  header.top,.settings,.panels,.map-wrap,footer{position:relative;z-index:1}
   body{
     font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
     color:var(--text);
@@ -240,6 +250,31 @@
 </style>
 </head>
 <body>
+  <svg class="cobweb tl" viewBox="0 0 220 220" aria-hidden="true">
+    <line x1="0" y1="0" x2="220" y2="0"/><line x1="0" y1="0" x2="212.5" y2="56.9"/>
+    <line x1="0" y1="0" x2="190.5" y2="110"/><line x1="0" y1="0" x2="155.6" y2="155.6"/>
+    <line x1="0" y1="0" x2="110" y2="190.5"/><line x1="0" y1="0" x2="56.9" y2="212.5"/>
+    <line x1="0" y1="0" x2="0" y2="220"/>
+    <path d="M55,0 A55,55 0 0 1 0,55"/><path d="M105,0 A105,105 0 0 1 0,105"/>
+    <path d="M155,0 A155,155 0 0 1 0,155"/><path d="M205,0 A205,205 0 0 1 0,205"/>
+  </svg>
+  <svg class="cobweb br" viewBox="0 0 220 220" aria-hidden="true">
+    <line x1="0" y1="0" x2="220" y2="0"/><line x1="0" y1="0" x2="212.5" y2="56.9"/>
+    <line x1="0" y1="0" x2="190.5" y2="110"/><line x1="0" y1="0" x2="155.6" y2="155.6"/>
+    <line x1="0" y1="0" x2="110" y2="190.5"/><line x1="0" y1="0" x2="56.9" y2="212.5"/>
+    <line x1="0" y1="0" x2="0" y2="220"/>
+    <path d="M55,0 A55,55 0 0 1 0,55"/><path d="M105,0 A105,105 0 0 1 0,105"/>
+    <path d="M155,0 A155,155 0 0 1 0,155"/><path d="M205,0 A205,205 0 0 1 0,205"/>
+  </svg>
+  <svg class="cobweb-spider" viewBox="0 0 40 95" aria-hidden="true">
+    <line x1="20" y1="0" x2="20" y2="44"/>
+    <path d="M20,52 Q8,48 4,66"/><path d="M20,53 Q6,54 2,74"/>
+    <path d="M20,54 Q8,62 6,82"/><path d="M20,55 Q10,70 10,90"/>
+    <path d="M20,52 Q32,48 36,66"/><path d="M20,53 Q34,54 38,74"/>
+    <path d="M20,54 Q32,62 34,82"/><path d="M20,55 Q30,70 30,90"/>
+    <ellipse cx="20" cy="62" rx="7" ry="10"/><ellipse cx="20" cy="49" rx="4.5" ry="4.5"/>
+  </svg>
+
   <header class="top">
     <div class="venue">Teatro d'Europa</div>
     <h1>Nella ragnatela di Traumara</h1>
@@ -362,6 +397,7 @@
   const POOL_MAX=54;
   const SHOW_NAME="Nella ragnatela di Traumara";
   const VENUE="Teatro d'Europa";
+  const SHOW_DATE="17/06/2026";
 
   function labelInfo(lbl){
     if(lbl===null) return {kind:'empty'};
@@ -533,20 +569,56 @@
   nameInput.addEventListener('input',()=>{ try{ localStorage.setItem(NAME_KEY,nameInput.value); }catch(e){} });
 
   // ---- JPEG ticket generation + auto download ----
-  function drawWeb(ctx,cx,cy,R,spokes,rings){
+  // A spider web anchored at a corner: radial spokes + sagging concentric threads.
+  function drawWeb(ctx,cx,cy,R,a0,a1,spokes,rings,alpha){
     ctx.save();
-    ctx.strokeStyle='rgba(244,201,93,0.16)';
-    ctx.lineWidth=1.4;
-    const ang=[];
-    for(let i=0;i<spokes;i++){ const a=(Math.PI*2/spokes)*i; ang.push(a);
+    ctx.strokeStyle='rgba(244,201,93,'+(alpha||0.16)+')';
+    ctx.lineWidth=1.1;
+    const angs=[];
+    for(let i=0;i<=spokes;i++){ const a=a0+(a1-a0)*i/spokes; angs.push(a);
       ctx.beginPath(); ctx.moveTo(cx,cy);
       ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R); ctx.stroke(); }
-    for(let r=1;r<=rings;r++){ const rr=R*r/rings;
-      ctx.beginPath();
-      for(let i=0;i<=spokes;i++){ const a=ang[i%spokes];
-        const x=cx+Math.cos(a)*rr, y=cy+Math.sin(a)*rr;
-        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
-      ctx.stroke(); }
+    for(let r=1;r<=rings;r++){
+      const rr=R*(0.16+0.84*r/rings);
+      for(let i=0;i<spokes;i++){
+        const aA=angs[i], aB=angs[i+1], am=(aA+aB)/2, cr=rr*0.82;
+        ctx.beginPath();
+        ctx.moveTo(cx+Math.cos(aA)*rr, cy+Math.sin(aA)*rr);
+        ctx.quadraticCurveTo(cx+Math.cos(am)*cr, cy+Math.sin(am)*cr,
+                             cx+Math.cos(aB)*rr, cy+Math.sin(aB)*rr);
+        ctx.stroke();
+      }
+    }
+    // a few dew drops on the threads
+    ctx.fillStyle='rgba(255,228,155,'+((alpha||0.16)+0.25)+')';
+    for(let k=0;k<5;k++){
+      const a=a0+(a1-a0)*((k*2+1)/(spokes)), rr=R*(0.35+0.5*Math.random());
+      ctx.beginPath(); ctx.arc(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr, 1.6,0,7); ctx.fill();
+    }
+    ctx.restore();
+  }
+  // A small spider dangling on a dragline.
+  function drawSpider(ctx,x,topY,bodyY,s){
+    ctx.save();
+    ctx.lineCap='round';
+    // dragline
+    ctx.strokeStyle='rgba(255,228,155,0.45)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,topY); ctx.lineTo(x,bodyY-7*s); ctx.stroke();
+    // legs
+    ctx.strokeStyle='rgba(255,228,155,0.75)'; ctx.lineWidth=1.5*s;
+    for(const side of [-1,1]){
+      for(let k=0;k<4;k++){
+        const sp=8+k*4;
+        ctx.beginPath();
+        ctx.moveTo(x, bodyY-1*s);
+        ctx.quadraticCurveTo(x+side*sp*s, bodyY-(7-k*2.4)*s, x+side*(sp+5)*s, bodyY+(9+k*3.2)*s);
+        ctx.stroke();
+      }
+    }
+    // body
+    ctx.strokeStyle='rgba(255,228,155,0.85)'; ctx.lineWidth=1.1*s; ctx.fillStyle='#1d1130';
+    ctx.beginPath(); ctx.ellipse(x, bodyY+8*s, 6.5*s, 9.5*s, 0,0,7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(x, bodyY-3*s, 4*s, 4*s, 0,0,7); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
   function fitFont(x,text,maxW,startPx,weight,family){
@@ -562,9 +634,12 @@
     const g=x.createLinearGradient(0,0,W,H);
     g.addColorStop(0,'#160a2b'); g.addColorStop(.55,'#2a1450'); g.addColorStop(1,'#3a1d63');
     x.fillStyle=g; x.fillRect(0,0,W,H);
-    // thematic spider webs in corners
-    drawWeb(x,0,0,440,11,7);
-    drawWeb(x,W,H,360,11,6);
+    // thematic spider webs anchored at the corners (radial sweep into the page)
+    drawWeb(x, 0, 0, 520, 0, Math.PI/2, 9, 6, 0.20);
+    drawWeb(x, W, H, 470, Math.PI, Math.PI*1.5, 9, 6, 0.17);
+    drawWeb(x, W, 0, 300, Math.PI/2, Math.PI, 7, 4, 0.12);
+    // a spider descending from the top web
+    drawSpider(x, 150, 60, 250, 1.15);
     // gold frame
     x.strokeStyle='rgba(244,201,93,.75)'; x.lineWidth=5; x.strokeRect(34,34,W-68,H-68);
     x.strokeStyle='rgba(244,201,93,.25)'; x.lineWidth=1.5; x.strokeRect(48,48,W-96,H-96);
@@ -605,13 +680,14 @@
     x.fillText('Intestato a', W/2, 958);
     x.fillStyle='#ffe49b'; fitFont(x,name,W-150,56,'700','Georgia, serif');
     x.fillText(name, W/2, 1022);
-    // timestamp
-    const now=new Date();
-    const pad=n=>String(n).padStart(2,'0');
-    const stamp=pad(now.getDate())+'/'+pad(now.getMonth()+1)+'/'+now.getFullYear()+
-      '  '+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
-    x.fillStyle='#8c7fae'; x.font='400 22px "Segoe UI", system-ui, sans-serif';
-    x.fillText(stamp, W/2, H-74);
+    // show date (fixed)
+    const now=new Date(); // kept for a unique filename
+    x.strokeStyle='rgba(244,201,93,.35)'; x.lineWidth=1.5;
+    x.beginPath(); x.moveTo(W/2-130,H-118); x.lineTo(W/2+130,H-118); x.stroke();
+    x.fillStyle='#b9aed4'; x.font='600 20px "Segoe UI", system-ui, sans-serif';
+    x.fillText('D A T A   D E L L O   S P E T T A C O L O', W/2, H-86);
+    x.fillStyle='#ffe49b'; x.font='700 34px Georgia, serif';
+    x.fillText(SHOW_DATE, W/2, H-50);
     return { canvas:c, label:label, stamp:now };
   }
   function ticketFilename(pool,label,name,d){
@@ -684,6 +760,7 @@
         save();
         renderAll();
         saveTicket(pool,pick,seatsFor(pool,pick),name).catch(e=>console.error('ticket',e));
+        nameInput.value=''; try{ localStorage.removeItem(NAME_KEY); }catch(e){} // reset for next person
       }
     };
     tick();
