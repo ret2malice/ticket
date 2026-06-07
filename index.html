@@ -186,6 +186,53 @@
   .global-actions button.danger{border-color:rgba(212,60,74,.5)}
   .global-actions button.danger:hover{background:rgba(212,60,74,.18)}
   footer{text-align:center;color:var(--text-dim);font-size:12px;margin-top:30px;opacity:.7}
+
+  /* ---- settings ---- */
+  .settings{
+    max-width:1100px;margin:0 auto 22px;
+    background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:18px;padding:18px 22px;backdrop-filter:blur(8px);
+    box-shadow:0 10px 40px rgba(0,0,0,.35);
+    display:grid;grid-template-columns:1fr 1.2fr;gap:18px 26px;
+  }
+  @media(max-width:680px){.settings{grid-template-columns:1fr}}
+  .settings .field{display:flex;flex-direction:column;gap:7px}
+  .settings label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--text-dim);font-weight:600}
+  .settings label .req{color:var(--just)}
+  .settings input[type=text]{
+    padding:12px 14px;border-radius:10px;font-size:16px;font-family:inherit;
+    color:var(--text);background:rgba(0,0,0,.25);
+    border:1px solid var(--panel-border);outline:none;transition:border .15s}
+  .settings input[type=text]:focus{border-color:var(--gold)}
+  .dirrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .dirrow button{padding:11px 16px;font-size:14px;color:#1a0e2e;font-weight:700;
+    background:linear-gradient(180deg,var(--gold-soft),var(--gold))}
+  .dirrow button:hover:not(:disabled){filter:brightness(1.06)}
+  #dirStatus{font-size:13px;color:var(--text-dim)}
+  #dirStatus.ok{color:#7fe0a0}
+  #dirStatus b{color:var(--gold-soft)}
+
+  /* ---- modal ---- */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(8,4,18,.72);
+    backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;
+    z-index:1000;padding:20px}
+  .modal-backdrop[hidden]{display:none}
+  .modal{background:linear-gradient(160deg,#2a1450,#3a1d63);
+    border:1px solid var(--gold);border-radius:18px;padding:28px 30px;max-width:420px;
+    text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .modal h3{margin:0 0 10px;font-family:Georgia,serif;color:var(--gold);font-size:24px}
+  .modal p{margin:0 0 22px;color:var(--text);line-height:1.5;font-size:15px}
+  .modal button{padding:12px 26px;font-size:15px;font-weight:700;color:#1a0e2e;
+    background:linear-gradient(180deg,var(--gold-soft),var(--gold))}
+
+  /* ---- toast ---- */
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
+    background:rgba(20,12,40,.96);border:1px solid var(--gold);color:var(--text);
+    padding:13px 22px;border-radius:30px;font-size:14px;font-weight:600;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;pointer-events:none;
+    transition:opacity .25s,transform .25s;z-index:1100;max-width:90vw}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
@@ -194,6 +241,20 @@
     <h1>Nella ragnatela di Traumara</h1>
     <div class="sub">Estrazione dei posti · uno spettacolo di danza sulle emozioni umane</div>
   </header>
+
+  <section class="settings">
+    <div class="field">
+      <label for="nameInput">Nome intestatario <span class="req">*</span></label>
+      <input type="text" id="nameInput" placeholder="Es. Mario Rossi" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label>Cartella di salvataggio biglietti</label>
+      <div class="dirrow">
+        <button id="pickDir">📁 Scegli cartella…</button>
+        <span id="dirStatus">Nessuna cartella: i biglietti andranno nei Download</span>
+      </div>
+    </div>
+  </section>
 
   <section class="panels">
     <div class="panel main">
@@ -248,6 +309,15 @@
       <button id="resetAll" class="danger">⟲ Reset totale</button>
     </div>
   </div>
+
+  <div class="modal-backdrop" id="modal" hidden>
+    <div class="modal">
+      <h3>Nome mancante</h3>
+      <p>Inserisci il <b>nome dell'intestatario</b> prima di procedere con l'estrazione del biglietto.</p>
+      <button id="modalOk">Ho capito</button>
+    </div>
+  </div>
+  <div id="toast"></div>
 
   <footer>Lo stato resta salvato in questo browser anche dopo la chiusura · Teatro d'Europa</footer>
 
@@ -397,6 +467,64 @@
     document.getElementById('undo').disabled = state.history.length===0;
   }
 
+  // ---- Settings: intestatario + cartella di salvataggio ----
+  const nameInput=document.getElementById('nameInput');
+  const NAME_KEY='traumara_name';
+
+  let toastTimer=null;
+  function toast(msg){
+    const t=document.getElementById('toast');
+    t.textContent=msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(()=>t.classList.remove('show'),4000);
+  }
+  function showModal(){ document.getElementById('modal').hidden=false; }
+  function hideModal(){ document.getElementById('modal').hidden=true; nameInput.focus(); }
+
+  // Chosen download folder via File System Access API, persisted in IndexedDB.
+  let dirHandle=null;
+  function idb(){ return new Promise((res,rej)=>{
+    const r=indexedDB.open('traumara_fs',1);
+    r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains('kv')) r.result.createObjectStore('kv'); };
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });}
+  async function idbSet(k,v){ const db=await idb(); return new Promise((res,rej)=>{
+    const tx=db.transaction('kv','readwrite'); tx.objectStore('kv').put(v,k);
+    tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); });}
+  async function idbGet(k){ const db=await idb(); return new Promise((res,rej)=>{
+    const tx=db.transaction('kv','readonly'); const g=tx.objectStore('kv').get(k);
+    g.onsuccess=()=>res(g.result); g.onerror=()=>rej(g.error); });}
+
+  async function ensurePerm(h){
+    const o={mode:'readwrite'};
+    try{ if((await h.queryPermission(o))==='granted') return true; }catch(e){ return false; }
+    try{ if((await h.requestPermission(o))==='granted') return true; }catch(e){}
+    return false;
+  }
+  function updateDirUI(){
+    const s=document.getElementById('dirStatus');
+    if(dirHandle){ s.innerHTML='Salvataggio in: <b>'+dirHandle.name+'</b>'; s.classList.add('ok'); }
+    else{ s.textContent='Nessuna cartella: i biglietti andranno nei Download'; s.classList.remove('ok'); }
+  }
+  async function pickDir(){
+    if(!window.showDirectoryPicker){
+      toast('⚠ Questo browser non supporta la scelta della cartella (usa Chrome o Edge)'); return;
+    }
+    try{
+      const h=await window.showDirectoryPicker({mode:'readwrite',id:'traumara-tickets'});
+      if(await ensurePerm(h)){ dirHandle=h; try{ await idbSet('dir',h); }catch(e){} updateDirUI();
+        toast('📁 Cartella impostata: '+h.name); }
+    }catch(e){ /* scelta annullata */ }
+  }
+  async function restoreDir(){
+    try{ const h=await idbGet('dir'); if(h){ dirHandle=h; updateDirUI(); } }catch(e){}
+  }
+
+  document.getElementById('pickDir').onclick=pickDir;
+  document.getElementById('modalOk').onclick=hideModal;
+  document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal') hideModal(); });
+  nameInput.addEventListener('input',()=>{ try{ localStorage.setItem(NAME_KEY,nameInput.value); }catch(e){} });
+
   // ---- JPEG ticket generation + auto download ----
   function drawWeb(ctx,cx,cy,R,spokes,rings){
     ctx.save();
@@ -414,7 +542,12 @@
       ctx.stroke(); }
     ctx.restore();
   }
-  function buildTicket(pool,num,seats){
+  function fitFont(x,text,maxW,startPx,weight,family){
+    let px=startPx; x.font=weight+' '+px+'px '+family;
+    while(x.measureText(text).width>maxW && px>14){ px-=2; x.font=weight+' '+px+'px '+family; }
+    return px;
+  }
+  function buildTicket(pool,num,seats,name){
     const W=900,H=1280, c=document.createElement('canvas');
     c.width=W; c.height=H;
     const x=c.getContext('2d');
@@ -426,68 +559,93 @@
     drawWeb(x,0,0,440,11,7);
     drawWeb(x,W,H,360,11,6);
     // gold frame
-    x.strokeStyle='rgba(244,201,93,.75)'; x.lineWidth=5;
-    x.strokeRect(34,34,W-68,H-68);
-    x.strokeStyle='rgba(244,201,93,.25)'; x.lineWidth=1.5;
-    x.strokeRect(48,48,W-96,H-96);
+    x.strokeStyle='rgba(244,201,93,.75)'; x.lineWidth=5; x.strokeRect(34,34,W-68,H-68);
+    x.strokeStyle='rgba(244,201,93,.25)'; x.lineWidth=1.5; x.strokeRect(48,48,W-96,H-96);
     x.textAlign='center';
     // venue
     x.fillStyle='#b9aed4'; x.font='600 24px Georgia, serif';
-    x.save(); x.translate(0,0);
-    x.fillText('T E A T R O   D ’ E U R O P A', W/2, 130); x.restore();
-    // show title (wrap to two lines)
+    x.fillText('T E A T R O   D ’ E U R O P A', W/2, 118);
+    // show title (two lines)
     x.fillStyle='#ffe49b'; x.font='700 50px Georgia, serif';
-    x.fillText('Nella ragnatela', W/2, 215);
-    x.fillText('di Traumara', W/2, 275);
+    x.fillText('Nella ragnatela', W/2, 196);
+    x.fillText('di Traumara', W/2, 254);
     // divider
     x.strokeStyle='rgba(244,201,93,.4)'; x.lineWidth=2;
-    x.beginPath(); x.moveTo(W/2-150,320); x.lineTo(W/2+150,320); x.stroke();
+    x.beginPath(); x.moveTo(W/2-150,294); x.lineTo(W/2+150,294); x.stroke();
     // pool label
     const poolLabel = pool==='main' ? 'ESTRAZIONE PRINCIPALE' : 'ESTRAZIONE LATERALE';
-    x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
-    x.fillText(poolLabel, W/2, 400);
+    x.fillStyle='#b9aed4'; x.font='600 25px "Segoe UI", system-ui, sans-serif';
+    x.fillText(poolLabel, W/2, 352);
     // big number disc
     const label = pool==='main' ? String(num) : num+'B';
-    const cx=W/2, cy=620, R=180;
+    const cx=W/2, cy=545, R=162;
     x.beginPath(); x.arc(cx,cy,R,0,Math.PI*2);
     const gg=x.createRadialGradient(cx,cy-50,30,cx,cy,R);
     gg.addColorStop(0,'#ffe27a'); gg.addColorStop(1,'#f4c95d');
     x.fillStyle=gg; x.fill();
     x.lineWidth=6; x.strokeStyle='rgba(255,255,255,.55)'; x.stroke();
     x.fillStyle='#241326';
-    x.font='700 '+(label.length>2?150:180)+'px Georgia, serif';
-    x.textBaseline='middle';
-    x.fillText(label, cx, cy+6);
-    x.textBaseline='alphabetic';
+    x.font='700 '+(label.length>2?138:168)+'px Georgia, serif';
+    x.textBaseline='middle'; x.fillText(label, cx, cy+4); x.textBaseline='alphabetic';
     // seats
-    x.fillStyle='#b9aed4'; x.font='600 28px "Segoe UI", system-ui, sans-serif';
-    x.fillText('Posti assegnati', W/2, 900);
-    x.fillStyle='#f3eefb'; x.font='700 46px Georgia, serif';
-    x.fillText(seats.join('   ·   '), W/2, 962);
+    x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
+    x.fillText('Posti assegnati', W/2, 792);
+    const seatStr=seats.join('   ·   ');
+    x.fillStyle='#f3eefb'; fitFont(x,seatStr,W-150,44,'700','Georgia, serif');
+    x.fillText(seatStr, W/2, 848);
+    // intestatario (person name)
+    x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
+    x.fillText('Intestato a', W/2, 958);
+    x.fillStyle='#ffe49b'; fitFont(x,name,W-150,56,'700','Georgia, serif');
+    x.fillText(name, W/2, 1022);
     // timestamp
     const now=new Date();
     const pad=n=>String(n).padStart(2,'0');
     const stamp=pad(now.getDate())+'/'+pad(now.getMonth()+1)+'/'+now.getFullYear()+
       '  '+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
     x.fillStyle='#8c7fae'; x.font='400 22px "Segoe UI", system-ui, sans-serif';
-    x.fillText(stamp, W/2, H-90);
-    return { dataUrl:c.toDataURL('image/jpeg',0.92), label:label, stamp:now };
+    x.fillText(stamp, W/2, H-74);
+    return { canvas:c, label:label, stamp:now };
   }
-  function downloadTicket(pool,num,seats){
-    const t=buildTicket(pool,num,seats);
-    const d=t.stamp, pad=n=>String(n).padStart(2,'0');
-    const fname='Traumara_'+(pool==='main'?'Principale':'Laterale')+'_'+t.label+'_'+
+  function ticketFilename(pool,label,name,d){
+    const pad=n=>String(n).padStart(2,'0');
+    const safe=(name||'').replace(/[^\p{L}\p{N}]+/gu,'_').replace(/^_+|_+$/g,'').slice(0,40)||'SenzaNome';
+    return 'Traumara_'+(pool==='main'?'Principale':'Laterale')+'_'+label+'_'+safe+'_'+
       d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'_'+
       pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+'.jpg';
-    const a=document.createElement('a');
-    a.href=t.dataUrl; a.download=fname;
+  }
+  function canvasToBlob(c){ return new Promise(r=>c.toBlob(r,'image/jpeg',0.92)); }
+  async function saveTicket(pool,num,seats,name){
+    const t=buildTicket(pool,num,seats,name);
+    const fname=ticketFilename(pool,t.label,name,t.stamp);
+    const blob=await canvasToBlob(t.canvas);
+    // Preferred: write silently into the chosen folder (File System Access API)
+    if(dirHandle){
+      try{
+        if(await ensurePerm(dirHandle)){
+          const fh=await dirHandle.getFileHandle(fname,{create:true});
+          const w=await fh.createWritable();
+          await w.write(blob); await w.close();
+          toast('🎟 Biglietto salvato in “'+dirHandle.name+'”: '+fname);
+          return;
+        }
+      }catch(e){ console.error('write',e); }
+    }
+    // Fallback: classic browser download (Downloads folder)
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=fname;
     document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    toast('🎟 Biglietto scaricato nei Download: '+fname);
   }
 
   // ---- Draw with roll animation ----
   let rolling=false;
   function draw(pool){
     if(rolling) return;
+    const name=nameInput.value.trim();
+    if(!name){ showModal(); return; }
+    if(dirHandle) ensurePerm(dirHandle); // re-authorize within the click gesture if needed
     const set=drawnSet(pool);
     const remaining=[];
     for(let n=1;n<=POOL_MAX;n++) if(!set.has(n)) remaining.push(n);
@@ -518,7 +676,7 @@
         state.history.push({pool:pool,n:pick});
         save();
         renderAll();
-        try{ downloadTicket(pool,pick,seatsFor(pool,pick)); }catch(e){ console.error('ticket',e); }
+        saveTicket(pool,pick,seatsFor(pool,pick),name).catch(e=>console.error('ticket',e));
       }
     };
     tick();
@@ -547,8 +705,15 @@
       state.history=[]; save(); renderAll(); }
   };
 
+  // restore persisted name + download folder
+  try{ const sn=localStorage.getItem(NAME_KEY); if(sn) nameInput.value=sn; }catch(e){}
+  if(!window.showDirectoryPicker){
+    document.getElementById('dirStatus').textContent=
+      'Scelta cartella non disponibile su questo browser — i biglietti andranno nei Download (usa Chrome/Edge per scegliere la cartella)';
+  }
   load();
   renderAll();
+  restoreDir();
 })();
 </script>
 </body>
