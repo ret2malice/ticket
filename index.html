@@ -37,6 +37,10 @@
     padding:24px clamp(12px,3vw,40px) 60px;
   }
   header.top{text-align:center;margin-bottom:26px}
+  header.top .venue{
+    color:var(--text-dim);letter-spacing:.32em;text-transform:uppercase;
+    font-size:clamp(11px,1.5vw,14px);margin-bottom:6px;
+  }
   header.top h1{
     font-family:Georgia,"Times New Roman",serif;
     font-weight:700;letter-spacing:.04em;
@@ -186,7 +190,8 @@
 </head>
 <body>
   <header class="top">
-    <h1>Teatro d'Europa</h1>
+    <div class="venue">Teatro d'Europa</div>
+    <h1>Nella ragnatela di Traumara</h1>
     <div class="sub">Estrazione dei posti · uno spettacolo di danza sulle emozioni umane</div>
   </header>
 
@@ -278,6 +283,8 @@
   const BOT=['L','M','N','O','P','Q','R','S','T','U'];
   const ALL=TOP.concat(BOT);
   const POOL_MAX=54;
+  const SHOW_NAME="Nella ragnatela di Traumara";
+  const VENUE="Teatro d'Europa";
 
   function labelInfo(lbl){
     if(lbl===null) return {kind:'empty'};
@@ -390,6 +397,93 @@
     document.getElementById('undo').disabled = state.history.length===0;
   }
 
+  // ---- JPEG ticket generation + auto download ----
+  function drawWeb(ctx,cx,cy,R,spokes,rings){
+    ctx.save();
+    ctx.strokeStyle='rgba(244,201,93,0.16)';
+    ctx.lineWidth=1.4;
+    const ang=[];
+    for(let i=0;i<spokes;i++){ const a=(Math.PI*2/spokes)*i; ang.push(a);
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R); ctx.stroke(); }
+    for(let r=1;r<=rings;r++){ const rr=R*r/rings;
+      ctx.beginPath();
+      for(let i=0;i<=spokes;i++){ const a=ang[i%spokes];
+        const x=cx+Math.cos(a)*rr, y=cy+Math.sin(a)*rr;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+      ctx.stroke(); }
+    ctx.restore();
+  }
+  function buildTicket(pool,num,seats){
+    const W=900,H=1280, c=document.createElement('canvas');
+    c.width=W; c.height=H;
+    const x=c.getContext('2d');
+    // background
+    const g=x.createLinearGradient(0,0,W,H);
+    g.addColorStop(0,'#160a2b'); g.addColorStop(.55,'#2a1450'); g.addColorStop(1,'#3a1d63');
+    x.fillStyle=g; x.fillRect(0,0,W,H);
+    // thematic spider webs in corners
+    drawWeb(x,0,0,440,11,7);
+    drawWeb(x,W,H,360,11,6);
+    // gold frame
+    x.strokeStyle='rgba(244,201,93,.75)'; x.lineWidth=5;
+    x.strokeRect(34,34,W-68,H-68);
+    x.strokeStyle='rgba(244,201,93,.25)'; x.lineWidth=1.5;
+    x.strokeRect(48,48,W-96,H-96);
+    x.textAlign='center';
+    // venue
+    x.fillStyle='#b9aed4'; x.font='600 24px Georgia, serif';
+    x.save(); x.translate(0,0);
+    x.fillText('T E A T R O   D ’ E U R O P A', W/2, 130); x.restore();
+    // show title (wrap to two lines)
+    x.fillStyle='#ffe49b'; x.font='700 50px Georgia, serif';
+    x.fillText('Nella ragnatela', W/2, 215);
+    x.fillText('di Traumara', W/2, 275);
+    // divider
+    x.strokeStyle='rgba(244,201,93,.4)'; x.lineWidth=2;
+    x.beginPath(); x.moveTo(W/2-150,320); x.lineTo(W/2+150,320); x.stroke();
+    // pool label
+    const poolLabel = pool==='main' ? 'ESTRAZIONE PRINCIPALE' : 'ESTRAZIONE LATERALE';
+    x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
+    x.fillText(poolLabel, W/2, 400);
+    // big number disc
+    const label = pool==='main' ? String(num) : num+'B';
+    const cx=W/2, cy=620, R=180;
+    x.beginPath(); x.arc(cx,cy,R,0,Math.PI*2);
+    const gg=x.createRadialGradient(cx,cy-50,30,cx,cy,R);
+    gg.addColorStop(0,'#ffe27a'); gg.addColorStop(1,'#f4c95d');
+    x.fillStyle=gg; x.fill();
+    x.lineWidth=6; x.strokeStyle='rgba(255,255,255,.55)'; x.stroke();
+    x.fillStyle='#241326';
+    x.font='700 '+(label.length>2?150:180)+'px Georgia, serif';
+    x.textBaseline='middle';
+    x.fillText(label, cx, cy+6);
+    x.textBaseline='alphabetic';
+    // seats
+    x.fillStyle='#b9aed4'; x.font='600 28px "Segoe UI", system-ui, sans-serif';
+    x.fillText('Posti assegnati', W/2, 900);
+    x.fillStyle='#f3eefb'; x.font='700 46px Georgia, serif';
+    x.fillText(seats.join('   ·   '), W/2, 962);
+    // timestamp
+    const now=new Date();
+    const pad=n=>String(n).padStart(2,'0');
+    const stamp=pad(now.getDate())+'/'+pad(now.getMonth()+1)+'/'+now.getFullYear()+
+      '  '+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+    x.fillStyle='#8c7fae'; x.font='400 22px "Segoe UI", system-ui, sans-serif';
+    x.fillText(stamp, W/2, H-90);
+    return { dataUrl:c.toDataURL('image/jpeg',0.92), label:label, stamp:now };
+  }
+  function downloadTicket(pool,num,seats){
+    const t=buildTicket(pool,num,seats);
+    const d=t.stamp, pad=n=>String(n).padStart(2,'0');
+    const fname='Traumara_'+(pool==='main'?'Principale':'Laterale')+'_'+t.label+'_'+
+      d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'_'+
+      pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+'.jpg';
+    const a=document.createElement('a');
+    a.href=t.dataUrl; a.download=fname;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
   // ---- Draw with roll animation ----
   let rolling=false;
   function draw(pool){
@@ -424,6 +518,7 @@
         state.history.push({pool:pool,n:pick});
         save();
         renderAll();
+        try{ downloadTicket(pool,pick,seatsFor(pool,pick)); }catch(e){ console.error('ticket',e); }
       }
     };
     tick();
