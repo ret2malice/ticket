@@ -244,6 +244,8 @@
     background:linear-gradient(180deg,var(--gold-soft),var(--gold))}
   /* create-ticket form */
   .modal.create{max-width:440px;text-align:left;padding:26px 28px}
+  .modal.create h3{text-align:left;margin-bottom:4px}
+  .modal.create .csub{margin:0 0 18px;color:var(--text-dim);font-size:13px;line-height:1.4}
   .cfield{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
   .cfield label{font-size:12px;letter-spacing:.06em;text-transform:uppercase;
     color:var(--text-dim);font-weight:600}
@@ -388,22 +390,15 @@
   <div class="modal-backdrop" id="createModal" hidden>
     <div class="modal create">
       <h3>Crea biglietto</h3>
+      <p class="csub">Per posti non mappati / casi speciali — inserisci il posto a mano.</p>
       <div class="cfield">
         <label for="cName">Nome intestatario</label>
         <input id="cName" type="text" placeholder="Es. Mario Rossi" autocomplete="off" />
       </div>
       <div class="cfield">
-        <label>Estrazione</label>
-        <div class="cseg">
-          <button type="button" class="seg-btn active" data-pool="main">Principale</button>
-          <button type="button" class="seg-btn" data-pool="lat">Laterale</button>
-        </div>
+        <label for="cSeat">Posto</label>
+        <input id="cSeat" type="text" placeholder="Es. 3B" autocomplete="off" />
       </div>
-      <div class="cfield">
-        <label for="cNum">Numero estratto (1–54)</label>
-        <input id="cNum" type="number" min="1" max="54" placeholder="1 – 54" />
-      </div>
-      <div class="cpreview" id="cPreview">Posti: —</div>
       <div class="cerr" id="cErr"></div>
       <div class="cbtns">
         <button type="button" id="cCancel" class="ghost">Annulla</button>
@@ -713,12 +708,14 @@
     // divider
     x.strokeStyle='rgba(244,201,93,.4)'; x.lineWidth=2;
     x.beginPath(); x.moveTo(W/2-150,294); x.lineTo(W/2+150,294); x.stroke();
-    // pool label
-    const poolLabel = pool==='main' ? 'ESTRAZIONE PRINCIPALE' : 'ESTRAZIONE LATERALE';
+    // category label
+    const isManual = pool==='manual';
+    const poolLabel = isManual ? 'POSTO ASSEGNATO'
+      : (pool==='main' ? 'ESTRAZIONE PRINCIPALE' : 'ESTRAZIONE LATERALE');
     x.fillStyle='#b9aed4'; x.font='600 25px "Segoe UI", system-ui, sans-serif';
     x.fillText(poolLabel, W/2, 352);
-    // big number disc
-    const label = pool==='main' ? String(num) : num+'B';
+    // big disc (number for draws, the seat itself for manual tickets)
+    const label = isManual ? String(num) : (pool==='main' ? String(num) : num+'B');
     const cx=W/2, cy=545, R=162;
     x.beginPath(); x.arc(cx,cy,R,0,Math.PI*2);
     const gg=x.createRadialGradient(cx,cy-50,30,cx,cy,R);
@@ -726,19 +723,24 @@
     x.fillStyle=gg; x.fill();
     x.lineWidth=6; x.strokeStyle='rgba(255,255,255,.55)'; x.stroke();
     x.fillStyle='#241326';
-    x.font='700 '+(label.length>2?138:168)+'px Georgia, serif';
+    if(isManual){ fitFont(x,label,R*1.6,150,'700','Georgia, serif'); }
+    else{ x.font='700 '+(label.length>2?138:168)+'px Georgia, serif'; }
     x.textBaseline='middle'; x.fillText(label, cx, cy+4); x.textBaseline='alphabetic';
-    // seats
-    x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
-    x.fillText('Posti assegnati', W/2, 792);
-    const seatStr=seats.join('   ·   ');
-    x.fillStyle='#f3eefb'; fitFont(x,seatStr,W-150,44,'700','Georgia, serif');
-    x.fillText(seatStr, W/2, 848);
+    // seats (only for mapped draws)
+    if(!isManual){
+      x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
+      x.fillText('Posti assegnati', W/2, 792);
+      const seatStr=seats.join('   ·   ');
+      x.fillStyle='#f3eefb'; fitFont(x,seatStr,W-150,44,'700','Georgia, serif');
+      x.fillText(seatStr, W/2, 848);
+    }
     // intestatario (person name)
+    const nameLabelY = isManual ? 832 : 958;
+    const nameY      = isManual ? 900 : 1022;
     x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
-    x.fillText('Intestato a', W/2, 958);
+    x.fillText('Intestato a', W/2, nameLabelY);
     x.fillStyle='#ffe49b'; fitFont(x,name,W-150,56,'700','Georgia, serif');
-    x.fillText(name, W/2, 1022);
+    x.fillText(name, W/2, nameY);
     // show date (fixed)
     const now=new Date(); // kept for a unique filename
     x.strokeStyle='rgba(244,201,93,.35)'; x.lineWidth=1.5;
@@ -751,8 +753,9 @@
   }
   function ticketFilename(pool,label,name,d){
     const pad=n=>String(n).padStart(2,'0');
-    const safe=(name||'').replace(/[^\p{L}\p{N}]+/gu,'_').replace(/^_+|_+$/g,'').slice(0,40)||'SenzaNome';
-    return 'Traumara_'+(pool==='main'?'Principale':'Laterale')+'_'+label+'_'+safe+'_'+
+    const clean=(s,fb)=>String(s||'').replace(/[^\p{L}\p{N}]+/gu,'_').replace(/^_+|_+$/g,'').slice(0,40)||fb;
+    const cat = pool==='manual' ? 'Posto' : (pool==='main' ? 'Principale' : 'Laterale');
+    return 'Traumara_'+cat+'_'+clean(label,'X')+'_'+clean(name,'SenzaNome')+'_'+
       d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'_'+
       pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+'.jpg';
   }
@@ -848,47 +851,31 @@
       state.history=[]; save(); renderAll(); }
   };
 
-  // ---- Manual ticket creation ----
-  let createPool='main';
+  // ---- Manual ticket creation (unmapped / special seats) ----
   const cName=document.getElementById('cName');
-  const cNum=document.getElementById('cNum');
-  const cPreview=document.getElementById('cPreview');
+  const cSeat=document.getElementById('cSeat');
   const cErr=document.getElementById('cErr');
   const createModal=document.getElementById('createModal');
-  function cUpdatePreview(){
-    const n=parseInt(cNum.value,10);
-    if(n>=1 && n<=54){
-      const lbl=createPool==='main'?n:n+'B';
-      cPreview.innerHTML='Biglietto <b>'+lbl+'</b> · Posti: '+seatsFor(createPool,n).join(' · ');
-    }else{ cPreview.textContent='Posti: — (inserisci un numero da 1 a 54)'; }
-  }
-  function setCreatePool(p){
-    createPool=p;
-    createModal.querySelectorAll('.seg-btn').forEach(b=>b.classList.toggle('active',b.dataset.pool===p));
-    cUpdatePreview();
-  }
   function openCreate(){
     cName.value=nameInput.value.trim();
-    cNum.value=''; cErr.textContent=''; setCreatePool('main'); cUpdatePreview();
+    cSeat.value=''; cErr.textContent='';
     createModal.hidden=false; setTimeout(()=>cName.focus(),30);
   }
   function closeCreate(){ createModal.hidden=true; }
   function generateTicket(){
-    const name=cName.value.trim(), n=parseInt(cNum.value,10);
+    const name=cName.value.trim(), seat=cSeat.value.trim();
     if(!name){ cErr.textContent='Inserisci il nome dell’intestatario.'; cName.focus(); return; }
-    if(!(n>=1 && n<=54)){ cErr.textContent='Inserisci un numero valido da 1 a 54.'; cNum.focus(); return; }
+    if(!seat){ cErr.textContent='Inserisci il posto.'; cSeat.focus(); return; }
     if(dirHandle) ensurePerm(dirHandle);
-    saveTicket(createPool,n,seatsFor(createPool,n),name).catch(e=>console.error('ticket',e));
+    saveTicket('manual',seat,[seat],name).catch(e=>console.error('ticket',e));
     closeCreate();
   }
   document.getElementById('openCreate').onclick=openCreate;
   document.getElementById('cCancel').onclick=closeCreate;
   document.getElementById('cGenerate').onclick=generateTicket;
   createModal.addEventListener('click',e=>{ if(e.target.id==='createModal') closeCreate(); });
-  createModal.querySelectorAll('.seg-btn').forEach(b=> b.onclick=()=>setCreatePool(b.dataset.pool));
-  cNum.addEventListener('input',cUpdatePreview);
-  cNum.addEventListener('keydown',e=>{ if(e.key==='Enter') generateTicket(); });
-  cName.addEventListener('keydown',e=>{ if(e.key==='Enter') cNum.focus(); });
+  cSeat.addEventListener('keydown',e=>{ if(e.key==='Enter') generateTicket(); });
+  cName.addEventListener('keydown',e=>{ if(e.key==='Enter') cSeat.focus(); });
 
   // restore persisted name + download folder
   try{ const sn=localStorage.getItem(NAME_KEY); if(sn) nameInput.value=sn; }catch(e){}
