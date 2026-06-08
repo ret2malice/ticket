@@ -176,6 +176,7 @@
   .cell.lat{background:linear-gradient(160deg,var(--lat-free-2),var(--lat-free))}
   .cell.drawn{background:linear-gradient(160deg,#d8495b,var(--drawn));
     color:#fff;border-color:rgba(255,255,255,.18)}
+  .cell.extra{font-size:15px;font-weight:800;box-shadow:inset 0 0 0 2px rgba(244,201,93,.7)}
   .cell.just{background:linear-gradient(160deg,#ffe27a,var(--just));
     color:#3a2a00;border-color:#fff;
     box-shadow:0 0 0 2px rgba(255,255,255,.5),0 0 22px rgba(255,211,77,.85);
@@ -389,15 +390,17 @@
   </div>
   <div class="modal-backdrop" id="createModal" hidden>
     <div class="modal create">
-      <h3>Crea biglietto</h3>
-      <p class="csub">Per posti non mappati / casi speciali — inserisci il posto a mano.</p>
+      <h3>Crea biglietto · Posto Extra</h3>
+      <p class="csub">Assegna un posto extra occupando una casella <b>libera (grigia)</b> della
+        mappa. Le caselle “NO” non sono mai assegnabili. La mappa si aggiorna in automatico.</p>
       <div class="cfield">
         <label for="cName">Nome intestatario</label>
         <input id="cName" type="text" placeholder="Es. Mario Rossi" autocomplete="off" />
       </div>
       <div class="cfield">
-        <label for="cSeat">Posto</label>
-        <input id="cSeat" type="text" placeholder="Es. 3B" autocomplete="off" />
+        <label for="cSeat">Posto libero <span id="cSeatAvail"></span></label>
+        <input id="cSeat" type="text" placeholder="Es. 1A" autocomplete="off" list="seatList" />
+        <datalist id="seatList"></datalist>
       </div>
       <div class="cerr" id="cErr"></div>
       <div class="cbtns">
@@ -462,6 +465,14 @@
     }
     return res;
   }
+  // physical ids of the empty (grayed) cells — the only seats assignable as "extra"
+  function allEmptySeats(){
+    const res=[];
+    for(const r of ALL){ const arr=GRID[r];
+      for(let c=0;c<16;c++) if(arr[c]===null) res.push((c+1)+r); }
+    return res;
+  }
+  const EMPTY_SEATS=new Set(allEmptySeats());
 
   // ---- State (persisted) ----
   const KEY='teatro_estrazione_v1';
@@ -475,6 +486,7 @@
   const drawnSet=p=>new Set(state.history.filter(h=>h.pool===p).map(h=>h.n));
   const lastOf=p=>{ for(let i=state.history.length-1;i>=0;i--) if(state.history[i].pool===p) return state.history[i].n; return null; };
   const globalLast=()=> state.history.length? state.history[state.history.length-1] : null;
+  const extrasSet=()=>new Set(state.history.filter(h=>h.pool==='extra').map(h=>h.seat));
 
   // ---- Build map DOM ----
   function segments(arr){
@@ -496,7 +508,7 @@
       for(const seg of segments(GRID[r])){
         const info=labelInfo(seg.label);
         const style='style="grid-column:span '+seg.span+'"';
-        if(info.kind==='empty'){ html+='<div class="cell empty" '+style+'></div>'; }
+        if(info.kind==='empty'){ html+='<div class="cell empty" data-seat="'+((seg.start+1)+r)+'" '+style+'></div>'; }
         else if(info.kind==='no'){ html+='<div class="cell no" '+style+'>NO</div>'; }
         else{
           html+='<div class="cell '+info.kind+'" '+style+
@@ -511,10 +523,11 @@
     buildBlock(TOP) + '<div style="height:14px"></div>' + buildBlock(BOT);
 
   const cells = Array.from(document.querySelectorAll('.cell[data-num]'));
+  const emptyCells = Array.from(document.querySelectorAll('.cell[data-seat]'));
 
   // ---- Render ----
   function paintMap(){
-    const mainD=drawnSet('main'), latD=drawnSet('lat'), gl=globalLast();
+    const mainD=drawnSet('main'), latD=drawnSet('lat'), exD=extrasSet(), gl=globalLast();
     for(const el of cells){
       const pool=el.dataset.pool, n=+el.dataset.num;
       const set = pool==='main'?mainD:latD;
@@ -522,6 +535,21 @@
       if(set.has(n)){
         if(gl && gl.pool===pool && gl.n===n) el.classList.add('just');
         else el.classList.add('drawn');
+      }
+    }
+    // empty (grayed) cells: an extra ticket fills one of these
+    for(const el of emptyCells){
+      const seat=el.dataset.seat;
+      el.classList.remove('drawn','just','extra');
+      if(exD.has(seat)){
+        el.classList.remove('empty');
+        el.textContent='+';
+        el.classList.add('extra');
+        if(gl && gl.pool==='extra' && gl.seat===seat) el.classList.add('just');
+        else el.classList.add('drawn');
+      }else{
+        el.classList.add('empty');
+        el.textContent='';
       }
     }
   }
@@ -709,13 +737,13 @@
     x.strokeStyle='rgba(244,201,93,.4)'; x.lineWidth=2;
     x.beginPath(); x.moveTo(W/2-150,294); x.lineTo(W/2+150,294); x.stroke();
     // category label
-    const isManual = pool==='manual';
-    const poolLabel = isManual ? 'POSTO ASSEGNATO'
+    const isExtra = pool==='extra';
+    const poolLabel = isExtra ? 'POSTO EXTRA'
       : (pool==='main' ? 'ESTRAZIONE PRINCIPALE' : 'ESTRAZIONE LATERALE');
     x.fillStyle='#b9aed4'; x.font='600 25px "Segoe UI", system-ui, sans-serif';
     x.fillText(poolLabel, W/2, 352);
-    // big disc (number for draws, the seat itself for manual tickets)
-    const label = isManual ? String(num) : (pool==='main' ? String(num) : num+'B');
+    // big disc: the drawn number, or "+" for an extra seat
+    const label = isExtra ? '+' : (pool==='main' ? String(num) : num+'B');
     const cx=W/2, cy=545, R=162;
     x.beginPath(); x.arc(cx,cy,R,0,Math.PI*2);
     const gg=x.createRadialGradient(cx,cy-50,30,cx,cy,R);
@@ -723,24 +751,19 @@
     x.fillStyle=gg; x.fill();
     x.lineWidth=6; x.strokeStyle='rgba(255,255,255,.55)'; x.stroke();
     x.fillStyle='#241326';
-    if(isManual){ fitFont(x,label,R*1.6,150,'700','Georgia, serif'); }
-    else{ x.font='700 '+(label.length>2?138:168)+'px Georgia, serif'; }
-    x.textBaseline='middle'; x.fillText(label, cx, cy+4); x.textBaseline='alphabetic';
-    // seats (only for mapped draws)
-    if(!isManual){
-      x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
-      x.fillText('Posti assegnati', W/2, 792);
-      const seatStr=seats.join('   ·   ');
-      x.fillStyle='#f3eefb'; fitFont(x,seatStr,W-150,44,'700','Georgia, serif');
-      x.fillText(seatStr, W/2, 848);
-    }
-    // intestatario (person name)
-    const nameLabelY = isManual ? 832 : 958;
-    const nameY      = isManual ? 900 : 1022;
+    x.font='700 '+(isExtra?210:(label.length>2?138:168))+'px Georgia, serif';
+    x.textBaseline='middle'; x.fillText(label, cx, cy+(isExtra?8:4)); x.textBaseline='alphabetic';
+    // assigned seats (the mapped seats for draws, the chosen seat for extra)
     x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
-    x.fillText('Intestato a', W/2, nameLabelY);
+    x.fillText('Posti assegnati', W/2, 792);
+    const seatStr=seats.join('   ·   ');
+    x.fillStyle='#f3eefb'; fitFont(x,seatStr,W-150,44,'700','Georgia, serif');
+    x.fillText(seatStr, W/2, 848);
+    // intestatario (person name)
+    x.fillStyle='#b9aed4'; x.font='600 26px "Segoe UI", system-ui, sans-serif';
+    x.fillText('Intestato a', W/2, 958);
     x.fillStyle='#ffe49b'; fitFont(x,name,W-150,56,'700','Georgia, serif');
-    x.fillText(name, W/2, nameY);
+    x.fillText(name, W/2, 1022);
     // show date (fixed)
     const now=new Date(); // kept for a unique filename
     x.strokeStyle='rgba(244,201,93,.35)'; x.lineWidth=1.5;
@@ -754,7 +777,7 @@
   function ticketFilename(pool,label,name,d){
     const pad=n=>String(n).padStart(2,'0');
     const clean=(s,fb)=>String(s||'').replace(/[^\p{L}\p{N}]+/gu,'_').replace(/^_+|_+$/g,'').slice(0,40)||fb;
-    const cat = pool==='manual' ? 'Posto' : (pool==='main' ? 'Principale' : 'Laterale');
+    const cat = pool==='extra' ? 'Extra' : (pool==='main' ? 'Principale' : 'Laterale');
     return 'Traumara_'+cat+'_'+clean(label,'X')+'_'+clean(name,'SenzaNome')+'_'+
       d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'_'+
       pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+'.jpg';
@@ -762,7 +785,8 @@
   function canvasToBlob(c){ return new Promise(r=>c.toBlob(r,'image/jpeg',0.92)); }
   async function saveTicket(pool,num,seats,name){
     const t=buildTicket(pool,num,seats,name);
-    const fname=ticketFilename(pool,t.label,name,t.stamp);
+    const fnameLabel = pool==='extra' ? num : t.label; // use the seat id for extra tickets
+    const fname=ticketFilename(pool,fnameLabel,name,t.stamp);
     const blob=await canvasToBlob(t.canvas);
     // Preferred: write silently into the chosen folder (File System Access API)
     if(dirHandle){
@@ -851,23 +875,37 @@
       state.history=[]; save(); renderAll(); }
   };
 
-  // ---- Manual ticket creation (unmapped / special seats) ----
+  // ---- Extra ticket: assign a free (grayed) seat on the map ----
   const cName=document.getElementById('cName');
   const cSeat=document.getElementById('cSeat');
   const cErr=document.getElementById('cErr');
   const createModal=document.getElementById('createModal');
+  function availableSeats(){ const taken=extrasSet(); return allEmptySeats().filter(s=>!taken.has(s)); }
+  function refreshSeatList(){
+    const avail=availableSeats();
+    document.getElementById('seatList').innerHTML=avail.map(s=>'<option value="'+s+'"></option>').join('');
+    document.getElementById('cSeatAvail').textContent='('+avail.length+' liberi)';
+  }
   function openCreate(){
     cName.value=nameInput.value.trim();
-    cSeat.value=''; cErr.textContent='';
+    cSeat.value=''; cErr.textContent=''; refreshSeatList();
     createModal.hidden=false; setTimeout(()=>cName.focus(),30);
   }
   function closeCreate(){ createModal.hidden=true; }
   function generateTicket(){
-    const name=cName.value.trim(), seat=cSeat.value.trim();
+    const name=cName.value.trim();
+    const seat=cSeat.value.trim().toUpperCase().replace(/\s+/g,'');
     if(!name){ cErr.textContent='Inserisci il nome dell’intestatario.'; cName.focus(); return; }
     if(!seat){ cErr.textContent='Inserisci il posto.'; cSeat.focus(); return; }
+    if(!EMPTY_SEATS.has(seat)){
+      cErr.textContent='“'+seat+'” non è un posto libero assegnabile (scegline uno grigio dall’elenco).';
+      cSeat.focus(); return;
+    }
+    if(extrasSet().has(seat)){ cErr.textContent='Il posto “'+seat+'” è già stato assegnato.'; cSeat.focus(); return; }
     if(dirHandle) ensurePerm(dirHandle);
-    saveTicket('manual',seat,[seat],name).catch(e=>console.error('ticket',e));
+    state.history.push({pool:'extra',seat:seat,name:name});
+    save(); renderAll();
+    saveTicket('extra',seat,[seat],name).catch(e=>console.error('ticket',e));
     closeCreate();
   }
   document.getElementById('openCreate').onclick=openCreate;
